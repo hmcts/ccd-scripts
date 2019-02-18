@@ -1,0 +1,186 @@
+#!/bin/bash
+
+# Deploys things to demo quickly
+#
+# ./demo deploy path/to/config.txt - deploys the config
+# ./demo deploy ccd-data-store-api master - deploys master to demo
+# ./demo deploy ccd-data-store-api,ccd-definition-store-api RDM-2512 - deploys master to demo
+
+WORKSPACE_ROOT=".workspace"
+
+function project_config() {
+    project=$1
+    config=$2
+    case $project in
+        ccd-data-store-api)
+            repository="git@github.com:hmcts/ccd-data-store-api.git"
+            ;;
+        ccd-definition-store-api)
+            repository="git@github.com:hmcts/ccd-definition-store-api.git"
+            ;;
+        ccd-user-profile-api)
+            repository="git@github.com:hmcts/ccd-user-profile-api.git"
+            ;;
+        ccd-api-gateway)
+            repository="git@github.com:hmcts/ccd-api-gateway.git"
+            ;;
+        ccd-admin-web)
+            repository="git@github.com:hmcts/ccd-admin-web.git"
+            ;;
+        ccd-case-management-web)
+            repository="git@github.com:hmcts/ccd-case-management-web.git"
+            ;;
+        dm-store)
+            repository="git@github.com:hmcts/document-management-store-app.git"
+            ;;
+        ccd-case-activity-api)
+            repository="git@github.com:hmcts/ccd-case-activity-api.git"
+            ;;
+        ccd-case-print-service)
+            repository="git@github.com:hmcts/ccd-case-print-service.git"
+            ;;
+        *)
+            echo "Project must be one of: ccd-data-store-api, ccd-definition-store-api, ccd-user-profile-api, ccd-api-gateway, ccd-admin-web, ccd-case-management-web, dm-store, ccd-case-activity-api, ccd-case-print-service"
+            exit 1 ;;
+    esac
+    case $config in
+        repository)
+            echo $repository
+            ;;
+        *)
+            echo "Config is one of repository. '$config' is unkown"
+            exit 1
+            ;;
+    esac
+}
+
+log() {
+    message=$1
+    echo "*** $message ***"
+}
+
+function workspace_dir() {
+    project=$1
+    workspace="$WORKSPACE_ROOT/$project"
+    echo $workspace
+}
+
+function git_clone_demo() {
+    project=$1
+
+    workspace=$(workspace_dir $project)
+    repository=$(project_config $project repository)
+    rm -rf $workspace
+    mkdir -p $workspace
+
+    log "Clone demo branch for $project"
+    result=$(git clone --branch demo $repository $workspace 2>&1 || exit $?)
+    exitcode=$?
+    echo "$result"
+}
+
+function git_fetch_branch() {
+    project=$1
+    branch=$2
+    workspace=$(workspace_dir $project)
+
+    log "Fetch $branch on $project"
+    result=$(cd $workspace; git fetch origin $branch:$branch 2>&1 || exit $?)
+    exitcode=$?
+    echo "$result"
+}
+
+
+function git_pull_branch() {
+    project=$1
+    branch=$2
+    workspace=$(workspace_dir $project)
+
+    log "Merge pull $branch into demo on $project"
+    result=$(cd $workspace; git pull -s recursive -Xtheirs --quiet --log --signoff --no-edit origin $branch 2>&1 || exit $?)
+    exitcode=$?
+    echo "$result"
+}
+
+
+function git_push() {
+    project=$1
+    workspace=$(workspace_dir $project)
+
+    log "Push $project"
+    result=$(cd $workspace; git push 2>&1 || exit $?)
+    exitcode=$?
+    echo "$result"
+}
+
+
+function deploy_product {
+    product=$1
+    branch=$2
+
+    log "Starting updating demo on $project branch $branch"
+    git_clone_demo $product
+    git_fetch_branch $product $branch
+    git_pull_branch $product $branch
+    git_push $product
+    log "Finished $project"
+}
+
+function deploy_products {
+    products=$1
+    branch=$2
+    for product in $(echo $products | tr "," " ")
+    do
+        deploy_product $product $branch
+    done
+}
+
+function deploy_file {
+    cat "$1" | egrep -v "^#" |
+    while IFS=" " read -r products branch remainder
+    do
+        deploy_products $products $branch
+    done
+}
+
+function deploy {
+    if [ -f $1 ]; then
+        deploy_file $1
+    else
+        products=$1
+        branch=$2
+        deploy_products $products $branch
+    fi
+}
+
+function not_implemented {
+    echo "Command not yet implemented"
+    exit 1
+}
+
+function usage {
+    echo "Usage:"
+    echo "  $(basename $0) <command>"
+    exit 1
+}
+
+command=$1
+shift
+
+case "$command" in
+    expected)
+        not_implemented
+        ;;
+    deploy)
+        deploy $*
+        ;;
+    status)
+        not_implemented
+        ;;
+    jenkins)
+        not_implemented
+        ;;
+    *)
+        usage
+        ;;
+esac
